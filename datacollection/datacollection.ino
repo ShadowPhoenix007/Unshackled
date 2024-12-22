@@ -17,7 +17,7 @@ float gyro[3] = {};
 float temperature = 0;
 
 
-   int piezoi;
+   float piezoi=0;
    int flexA[5] = {0,0,0,0,0};
    int flexMax[5] = {0,0,0,0,0};
    int flexMin[5] = {0,0,0,0,0};
@@ -36,8 +36,7 @@ float gyroPID[3] = {0, 0, 0};
 // the setup routine runs once when you press reset:
 void setup() {
   Serial.begin(115200);
-
-    Wire.begin();
+  Wire.begin();
   Serial.begin(115200);
   Serial.println("Initializing MPU6050...");
   mpu.initialize();
@@ -49,6 +48,12 @@ void setup() {
 
   Serial.println("MPU6050 Found!");
 
+  FlexCalibration();
+}
+
+void FlexCalibration()
+{
+  
   Serial.println("Flex in max positions in ");
   delay(1000);
   count(3);
@@ -63,7 +68,7 @@ void setup() {
   Read();
   copyArray(flexA, flexMin, 5);
   printiArray(flexMin, 5, true);
-  Serial.print("flex1, flex2, flex3, flex4, flex5, piezo");
+  Serial.print("flex1, flex2, flex3, flex4, flex5, piezo, AccelX, AccelY, AccelZ, GyroX, GyroY, GyroZ");
 }
 
 void copyArray(int source[], int destination[], int size) {
@@ -122,16 +127,17 @@ void loop() {
 
   Read();
   // // print out the value you read:
-  //printiArray(flexA, 5, false);
+  printiArray(flexA, 5, false);
+  Serial.print(String(piezoi) + ", ");
   printfArray(accelPID, 3, false);
   printfArray(gyroPID, 3, true);
   Serial.println();
   delay(100);
 }
 
-float kp = 25;
-float ki = 0.1;
-float kd = 15;
+float kp = 250;
+float ki = 0;
+float kd = 150;
 float PID(float setpoint, float measurement, float& integral, float& lastError)
 {
   float error = setpoint - measurement;
@@ -140,7 +146,7 @@ float PID(float setpoint, float measurement, float& integral, float& lastError)
   lastError = error;
   integral = integral + error;
   float finIntegral = integral * ki;
-  return (proportional + finIntegral + derivative);
+  return (measurement - (proportional + finIntegral + derivative));
 }
 
 void Read()
@@ -164,11 +170,12 @@ void Read()
   gyro[1] = gy;
   gyro[2] = gz;
 
+  //PID for acceleration
   for (int i = 0; i < 3; i++) {
     accelPID[i] = PID(0, acceleration[i], accelLastError[i], accelIntegral[i]);
   }
 
-  // Apply PID to gyroscope data
+  //PID for gyroscope data
   for (int i = 0; i < 3; i++) {
     gyroPID[i] = PID(0, gyro[i], gyroLastError[i], gyroIntegral[i]);
   }
