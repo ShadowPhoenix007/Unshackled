@@ -37,7 +37,6 @@ float gyroPID[3] = {0, 0, 0};
 void setup() {
   Serial.begin(115200);
   Wire.begin();
-  Serial.begin(115200);
   Serial.println("Initializing MPU6050...");
   mpu.initialize();
   if (mpu.testConnection()) {
