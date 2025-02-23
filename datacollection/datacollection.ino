@@ -1,10 +1,16 @@
+#define PWMA 6
+#define AIN1 8
+#define AIN2 7
+#define PWMB 5
+#define BIN1 4
+#define BIN2 3
+
 #define flex1 A0
 #define flex2 A1
 #define flex3 A2
 #define flex4 A3
 #define piezo A7
 #define flex5 A6
-
 
 #include "Wire.h"
 #include "I2Cdev.h"
@@ -16,81 +22,168 @@ float acceleration[3] = {};
 float gyro[3] = {};
 float temperature = 0;
 
+float piezoi = 0;
+int flexA[5] = {0, 0, 0, 0, 0};
+int flexMax[5] = {0, 0, 0, 0, 0};
+int flexMin[5] = {0, 0, 0, 0, 0};
 
-   float piezoi=0;
-   int flexA[5] = {0,0,0,0,0};
-   int flexMax[5] = {0,0,0,0,0};
-   int flexMin[5] = {0,0,0,0,0};
+// Calibration Offsets (from your calibration code)
+float accelOffset[3] = { -18.06, -344.86, -15943.23 };
+float gyroOffset[3] = { 245.84, 411.23, -98.23 };
 
-   float accelError[3] = {0, 0, 0};
-float gyroError[3] = {0, 0, 0};
+// PID variables
 float accelLastError[3] = {0, 0, 0};
 float gyroLastError[3] = {0, 0, 0};
 float accelIntegral[3] = {0, 0, 0};
 float gyroIntegral[3] = {0, 0, 0};
 
-//pid
 float accelPID[3] = {0, 0, 0};
 float gyroPID[3] = {0, 0, 0};
 
-// the setup routine runs once when you press reset:
+String inputString = "";
+
+// PID Constants
+float kp = 200;
+float ki = 0;
+float kd = 50;
+float deadZone = 10; // Small tolerance to prevent unnecessary corrections
+
 void setup() {
   Serial.begin(115200);
   Wire.begin();
-  Serial.println("Initializing MPU6050...");
+  pinMode(flex1, INPUT);
+  pinMode(flex2, INPUT);
+  pinMode(flex3, INPUT);
+  pinMode(flex4, INPUT);
+  pinMode(flex5, INPUT);
+  pinMode(AIN1, OUTPUT);
+  pinMode(AIN2, OUTPUT);
+  pinMode(PWMA, OUTPUT);
+  pinMode(BIN1, OUTPUT);
+  pinMode(BIN2, OUTPUT);
+  pinMode(PWMB, OUTPUT);
+
   mpu.initialize();
   if (mpu.testConnection()) {
     Serial.println("MPU6050 connection successful!");
   } else {
     Serial.println("MPU6050 connection failed!");
   }
-
-  Serial.println("MPU6050 Found!");
-
-  FlexCalibration();
 }
 
-void FlexCalibration()
-{
-  
-  Serial.println("Flex in max positions in ");
-  delay(1000);
-  count(3);
-  Serial.println("FLEX!");
-  Read();  
-  copyArray(flexA, flexMax, 5);
-  printiArray(flexMax, 5, true);
-  Serial.println("Flex in min positions in ");
-  delay(1000);
-  count(3);
-  Serial.println("FLEX!");
+void loop() {
   Read();
-  copyArray(flexA, flexMin, 5);
-  printiArray(flexMin, 5, true);
-  Serial.print("flex1, flex2, flex3, flex4, flex5, piezo, AccelX, AccelY, AccelZ, GyroX, GyroY, GyroZ");
+  TremorDamper();
+  
+  // Print PID values
+  printfArray(accelPID, 3, false);
+  printfArray(gyroPID, 3, true);
+  delay(100);
 }
 
-void copyArray(int source[], int destination[], int size) {
-  for (int i = 0; i < size; i++) 
-  {
-    destination[i] = source[i];
+float PID(float setpoint, float measurement, float& integral, float& lastError) {
+    float error = setpoint - measurement;
+
+    if (abs(error) < deadZone) {
+        integral = 0;  // Reset integral if error is too small
+    } else {
+        integral += error;
+    }
+
+    float proportional = kp * error;
+    float derivative = kd * (error - lastError);
+    lastError = error;
+
+    return (measurement - (proportional + (ki * integral) + derivative));
+}
+
+void Read() {
+  flexA[0] = analogRead(flex1);
+  flexA[1] = analogRead(flex2);
+  flexA[2] = analogRead(flex3);
+  flexA[3] = analogRead(flex4);
+  flexA[4] = analogRead(flex5);
+
+  piezoi = analogRead(piezo);
+
+  int16_t ax, ay, az, gx, gy, gz;
+  mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+
+  // Apply calibration offsets
+  acceleration[0] = ax - accelOffset[0];
+  acceleration[1] = ay - accelOffset[1];
+  acceleration[2] = az - accelOffset[2];
+
+  gyro[0] = gx - gyroOffset[0];
+  gyro[1] = gy - gyroOffset[1];
+  gyro[2] = gz - gyroOffset[2];
+
+  // PID for acceleration
+  for (int i = 0; i < 3; i++) {
+    accelPID[i] = PID(0, acceleration[i], accelIntegral[i], accelLastError[i]);
+  }
+
+  // PID for gyroscope data
+  for (int i = 3; i < 6; i++) {
+    gyroPID[i - 3] = PID(0, gyro[i - 3], gyroIntegral[i - 3], gyroLastError[i - 3]);
   }
 }
 
-void printiArray(int arr[], int size, boolean line) {
-  for (int i = 0; i < size; i++) {
-    Serial.print(arr[i]);
-    if (i < size - 1) {
-      Serial.print(", ");
+void TremorDamper() {
+  if (Serial.available()) {
+    inputString = Serial.readStringUntil('\n'); // Read command
+
+    if (inputString == "AMotorFOR") {
+      RunMotorA(0.8);
+    } 
+    else if (inputString == "AMotorREV") {
+      RunMotorA(-0.8);
+    }
+    else if (inputString == "AMotorOff") {
+      RunMotorA(0);
+    }
+
+    if (inputString == "BMotorFOR") {
+      RunMotorB(0.8);
+    } 
+    else if (inputString == "BMotorREV") {
+      RunMotorB(-0.8);
+    }
+    else if (inputString == "BMotorOff") {
+      RunMotorB(0);
     }
   }
-  if (line==true)
-  {
-    Serial.println();
+}
+
+void RunMotorA(double powerA) {
+  if (powerA > 0) {
+    digitalWrite(AIN1, HIGH);
+    digitalWrite(AIN2, LOW);
+    analogWrite(PWMA, powerA * 255);
+  } else if (powerA < 0) {
+    digitalWrite(AIN1, LOW);
+    digitalWrite(AIN2, HIGH);
+    analogWrite(PWMA, -powerA * 255);
+  } else {
+    digitalWrite(AIN1, LOW);
+    digitalWrite(AIN2, LOW);
+    analogWrite(PWMA, 0);
   }
-  else
-  {
-    Serial.print(", ");
+}
+
+void RunMotorB(double powerB) {
+  if (powerB > 0) {
+    digitalWrite(BIN1, HIGH);
+    digitalWrite(BIN2, LOW);
+    analogWrite(PWMB, powerB * 255);
+  } else if (powerB < 0) {
+    digitalWrite(BIN1, LOW);
+    digitalWrite(BIN2, HIGH);
+    analogWrite(PWMB, -powerB * 255);
+  } else {
+    digitalWrite(BIN1, LOW);
+    digitalWrite(BIN2, LOW);
+    analogWrite(PWMB, 0);
   }
 }
 
@@ -101,82 +194,9 @@ void printfArray(float arr[], int size, boolean line) {
       Serial.print(", ");
     }
   }
-  if (line==true)
-  {
+  if (line) {
     Serial.println();
-  }
-  else
-  {
+  } else {
     Serial.print(", ");
   }
 }
-
-void count(int counter)
-{
-  for (int i = counter; i > 0; i--)
-  {
-    Serial.print(i);
-    delay(1000);
-  }
-}
-
-// the loop routine runs over and over again forever:
-void loop() {
-  // read the input on analog pin 0:
-
-  Read();
-  // // print out the value you read:
-  printiArray(flexA, 5, false);
-  Serial.print(String(piezoi) + ", ");
-  printfArray(accelPID, 3, false);
-  printfArray(gyroPID, 3, true);
-  Serial.println();
-  delay(100);
-}
-
-float kp = 250;
-float ki = 0;
-float kd = 150;
-float PID(float setpoint, float measurement, float& integral, float& lastError)
-{
-  float error = setpoint - measurement;
-  float proportional = kp * error;
-  float derivative = kd * (error - lastError);
-  lastError = error;
-  integral = integral + error;
-  float finIntegral = integral * ki;
-  return (measurement - (proportional + finIntegral + derivative));
-}
-
-void Read()
-{
-  flexA[0] = analogRead(flex1);
-  flexA[1] = analogRead(flex2);
-  flexA[2] = analogRead(flex3);
-  flexA[3] = analogRead(flex4);
-  flexA[4] = analogRead(flex5);
-  
-  piezoi = analogRead(piezo);
-
-  int16_t ax, ay, az, gx, gy, gz;
-  mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-
-  acceleration[0] = ax; //m/s^2
-  acceleration[1] = ay;
-  acceleration[2] = az;
-
-  gyro[0] = gx; //rad/s
-  gyro[1] = gy;
-  gyro[2] = gz;
-
-  //PID for acceleration
-  for (int i = 0; i < 3; i++) {
-    accelPID[i] = PID(0, acceleration[i], accelLastError[i], accelIntegral[i]);
-  }
-
-  //PID for gyroscope data
-  for (int i = 0; i < 3; i++) {
-    gyroPID[i] = PID(0, gyro[i], gyroLastError[i], gyroIntegral[i]);
-  }
-}
-

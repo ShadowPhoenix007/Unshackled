@@ -55,5 +55,5 @@ def readserial(port, baudrate, timestamp=False):
             print('File closed successfully.')
 
 if __name__ == '__main__':
-    readserial('COM15', 115200, True)
+    readserial('COM11', 115200, True)
 
