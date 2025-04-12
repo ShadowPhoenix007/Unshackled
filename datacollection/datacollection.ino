@@ -27,10 +27,6 @@ int flexA[5] = {0, 0, 0, 0, 0};
 int flexMax[5] = {0, 0, 0, 0, 0};
 int flexMin[5] = {0, 0, 0, 0, 0};
 
-// Calibration Offsets (from your calibration code)
-float accelOffset[3] = { -18.06, -344.86, -15943.23 };
-float gyroOffset[3] = { 245.84, 411.23, -98.23 };
-
 // PID variables
 float accelLastError[3] = {0, 0, 0};
 float gyroLastError[3] = {0, 0, 0};
@@ -43,9 +39,9 @@ float gyroPID[3] = {0, 0, 0};
 String inputString = "";
 
 // PID Constants
-float kp = 200;
+float kp = 0;
 float ki = 0;
-float kd = 50;
+float kd = 0;
 float deadZone = 10; // Small tolerance to prevent unnecessary corrections
 
 void setup() {
@@ -110,13 +106,13 @@ void Read() {
   mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
   // Apply calibration offsets
-  acceleration[0] = ax - accelOffset[0];
-  acceleration[1] = ay - accelOffset[1];
-  acceleration[2] = az - accelOffset[2];
+  acceleration[0] = ax ;
+  acceleration[1] = ay ;
+  acceleration[2] = az ;
 
-  gyro[0] = gx - gyroOffset[0];
-  gyro[1] = gy - gyroOffset[1];
-  gyro[2] = gz - gyroOffset[2];
+  gyro[0] = gx;
+  gyro[1] = gy;
+  gyro[2] = gz;
 
   // PID for acceleration
   for (int i = 0; i < 3; i++) {

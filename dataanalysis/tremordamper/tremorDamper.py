@@ -3,8 +3,15 @@ import time
 import numpy as np
 import pandas as pd
 
+<<<<<<< Updated upstream
 arduino = serial.Serial('COM15', 115200, timeout=1)
 time.sleep(2)
+=======
+# === PARAMETERS ===
+SERIAL_PORT = "COM15"  # Change for your Arduino port (e.g., "/dev/ttyUSB0" for Linux)
+BAUD_RATE = 115200
+REALTIME = True  # Set to True for real-time detection
+>>>>>>> Stashed changes
 
 prev_x, prev_y, prev_gyro_x, prev_gyro_y = 0, 0, 0,0 
 
